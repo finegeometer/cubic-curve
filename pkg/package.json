@@ -1,0 +1,21 @@
+{
+  "name": "cubic_curve",
+  "collaborators": [
+    "fine-geometer"
+  ],
+  "description": "Draw the unique cubic curve through nine points.",
+  "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/finegeometer/cubic-curve"
+  },
+  "files": [
+    "cubic_curve_bg.wasm",
+    "cubic_curve.js",
+    "cubic_curve.d.ts"
+  ],
+  "module": "cubic_curve.js",
+  "types": "cubic_curve.d.ts",
+  "sideEffects": "false"
+}
