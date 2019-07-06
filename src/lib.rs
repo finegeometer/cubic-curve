@@ -216,7 +216,8 @@ fn screen_coords([width, height]: [f32; 2], [x, y]: [i32; 2]) -> [f32; 2] {
 fn cubic(points: [[f32; 2]; 9]) -> [f32; 10] {
     use nalgebra as na;
 
-    fn to_vec10([x, y]: [f32; 2]) -> na::VectorN<f32, na::U10> {
+    fn to_vec10([x, y]: [f32; 2]) -> na::VectorN<f64, na::U10> {
+        let [x, y] = [f64::from(x), f64::from(y)];
         na::VectorN::from_row_slice_generic(
             na::U10,
             na::U1,
@@ -235,19 +236,19 @@ fn cubic(points: [[f32; 2]; 9]) -> [f32; 10] {
         )
     }
 
-    let matrix: na::MatrixMN<f32, na::U10, na::U9> =
+    let matrix: na::MatrixMN<f64, na::U10, na::U9> =
         na::MatrixMN::from_columns(&points.iter().cloned().map(to_vec10).collect::<Vec<_>>());
 
     [
-        matrix.remove_row(0).determinant(),
-        -matrix.remove_row(1).determinant(),
-        matrix.remove_row(2).determinant(),
-        -matrix.remove_row(3).determinant(),
-        matrix.remove_row(4).determinant(),
-        -matrix.remove_row(5).determinant(),
-        matrix.remove_row(6).determinant(),
-        -matrix.remove_row(7).determinant(),
-        matrix.remove_row(8).determinant(),
-        -matrix.remove_row(9).determinant(),
+        matrix.remove_row(0).determinant() as f32,
+        -matrix.remove_row(1).determinant() as f32,
+        matrix.remove_row(2).determinant() as f32,
+        -matrix.remove_row(3).determinant() as f32,
+        matrix.remove_row(4).determinant() as f32,
+        -matrix.remove_row(5).determinant() as f32,
+        matrix.remove_row(6).determinant() as f32,
+        -matrix.remove_row(7).determinant() as f32,
+        matrix.remove_row(8).determinant() as f32,
+        -matrix.remove_row(9).determinant() as f32,
     ]
 }
