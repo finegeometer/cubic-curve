@@ -1,5 +1,7 @@
 Draw the unique cubic curve through nine points.
 
+[Try it!](https://finegeometer.github.io/cubic-curve/)
+
 # Usage
 
 Click a red dot to pick it up.

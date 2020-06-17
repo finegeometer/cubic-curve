@@ -3,78 +3,43 @@
 mod render;
 mod utils;
 
-use std::cell::RefCell;
-use std::rc::Rc;
+use core::cell::RefCell;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
-#[wasm_bindgen(start)]
-pub fn run() -> Result<(), JsValue> {
-    let state: Rc<RefCell<Model>> = Rc::new(RefCell::new(Model::init()?));
+thread_local! {
+    static MODEL: RefCell<Model> = RefCell::new(Model::init().unwrap_throw());
 
-    let model = state.borrow_mut();
-
-    {
-        let state = state.clone();
-        let closure: Closure<dyn FnMut(web_sys::MouseEvent)> =
-            Closure::wrap(Box::new(move |evt| {
-                let dims = state.borrow().canvas_dimensions;
-                state
-                    .borrow_mut()
-                    .update(Msg::Click(screen_coords(
-                        dims,
-                        [evt.offset_x(), evt.offset_y()],
-                    )))
-                    .unwrap_or_else(|err| wasm_bindgen::throw_val(err));
-            }));
-        model
-            .canvas
-            .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())?;
+    static FRAME: js_sys::Function = {
+        let closure: Closure<dyn FnMut(f64)> =
+            Closure::wrap(Box::new(|timestamp| update(Msg::Frame(timestamp))));
+        let animation_frame_closure = closure.as_ref().unchecked_ref::<js_sys::Function>().clone();
         closure.forget();
+        animation_frame_closure
     }
+}
 
-    {
-        let state = state.clone();
-        let closure: Closure<dyn FnMut(web_sys::MouseEvent)> =
-            Closure::wrap(Box::new(move |evt| {
-                let dims = state.borrow().canvas_dimensions;
-                state
-                    .borrow_mut()
-                    .update(Msg::MouseMove(screen_coords(
-                        dims,
-                        [evt.offset_x(), evt.offset_y()],
-                    )))
-                    .unwrap_or_else(|err| wasm_bindgen::throw_val(err));
-            }));
-        model
-            .canvas
-            .add_event_listener_with_callback("mousemove", closure.as_ref().unchecked_ref())?;
-        closure.forget();
-    }
+fn update(msg: Msg) {
+    MODEL.with(|m| m.borrow_mut().update(msg).unwrap_throw())
+}
 
-    {
-        let state = state.clone();
-        let closure: Closure<dyn FnMut(web_sys::MouseEvent)> =
-            Closure::wrap(Box::new(move |_evt| {
-                state
-                    .borrow_mut()
-                    .update(Msg::Resize)
-                    .unwrap_or_else(|err| wasm_bindgen::throw_val(err));
-            }));
-        model
-            .window
-            .add_event_listener_with_callback("resize", closure.as_ref().unchecked_ref())?;
-        closure.forget();
-    }
+fn request_frame() {
+    FRAME.with(|f| {
+        web_sys::window()
+            .unwrap_throw()
+            .request_animation_frame(f)
+            .unwrap_throw();
+    })
+}
 
-    model.view();
-
-    Ok(())
+#[wasm_bindgen]
+pub fn run() {
+    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+    request_frame()
 }
 
 struct Model {
     render: Box<render::RenderFunction>,
-    window: web_sys::Window,
     body: web_sys::HtmlElement,
     canvas: web_sys::HtmlCanvasElement,
     canvas_dimensions: [f32; 2],
@@ -87,6 +52,7 @@ enum Msg {
     Click([f32; 2]),
     MouseMove([f32; 2]),
     Resize,
+    Frame(f64),
 }
 
 impl Model {
@@ -124,9 +90,24 @@ impl Model {
 
         let render = Box::new(render::make_fn(&canvas)?);
 
+        event_listener(&canvas, "click", |evt, model| {
+            let evt = evt.dyn_into::<web_sys::MouseEvent>().unwrap_throw();
+            Msg::Click(screen_coords(
+                model.canvas_dimensions,
+                [evt.offset_x(), evt.offset_y()],
+            ))
+        });
+        event_listener(&canvas, "mousemove", |evt, model| {
+            let evt = evt.dyn_into::<web_sys::MouseEvent>().unwrap_throw();
+            Msg::MouseMove(screen_coords(
+                model.canvas_dimensions,
+                [evt.offset_x(), evt.offset_y()],
+            ))
+        });
+        event_listener(&window, "resize", |_, _| Msg::Resize);
+
         Ok(Self {
             render,
-            window,
             body,
             canvas,
             canvas_dimensions,
@@ -181,27 +162,25 @@ impl Model {
                         }
                     }
                 }
-                self.view()
             }
             Msg::MouseMove(pos) => {
                 if let Some(p) = self.selected_point {
                     self.points[p] = pos;
                 }
-                self.view()
             }
             Msg::Resize => {
                 self.canvas_dimensions = [
                     self.body.client_width() as f32 - 20.,
                     self.body.client_height() as f32 - 20.,
                 ];
-                web_sys::console::log_1(&format!("{:?}", self.canvas_dimensions).into());
                 self.canvas
                     .set_attribute("width", &format!("{}", self.canvas_dimensions[0]))?;
                 self.canvas
                     .set_attribute("height", &format!("{}", self.canvas_dimensions[1]))?;
-                self.view()
             }
+            Msg::Frame(_) => {}
         }
+        self.view();
         Ok(())
     }
 }
@@ -251,4 +230,19 @@ fn cubic(points: [[f32; 2]; 9]) -> [f32; 10] {
         matrix.remove_row(8).determinant() as f32,
         -matrix.remove_row(9).determinant() as f32,
     ]
+}
+
+fn event_listener(
+    target: &web_sys::EventTarget,
+    event: &str,
+    msg: impl 'static + Fn(web_sys::Event, &Model) -> Msg,
+) {
+    let closure: Closure<dyn FnMut(web_sys::Event)> = Closure::wrap(Box::new(move |evt| {
+        let msg = MODEL.with(|m| msg(evt, &m.borrow()));
+        update(msg)
+    }));
+    target
+        .add_event_listener_with_callback(event, closure.as_ref().unchecked_ref())
+        .unwrap_throw();
+    closure.forget()
 }
